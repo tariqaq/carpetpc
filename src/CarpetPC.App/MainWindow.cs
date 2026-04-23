@@ -32,12 +32,14 @@ public sealed class MainWindow : Window
     private readonly ResourceBudgetService _resourceBudgetService;
     private readonly ModelSetupService _modelSetupService;
     private readonly MicrophoneMonitor _microphoneMonitor;
+    private readonly MicrophoneSelection _microphoneSelection;
     private readonly StubWakeWordService _wakeWordService;
     private readonly ISpeechTranscriber _speechTranscriber;
     private readonly AgentOrchestrator _agentOrchestrator;
     private readonly WpfTextBox _logBox = new();
     private readonly WpfTextBlock _statusText = new();
     private readonly WpfButton _pauseButton = new();
+    private readonly WpfButton _talkButton = new();
     private readonly WpfComboBox _micSelector = new();
     private readonly WpfProgressBar _micLevel = new();
     private readonly WpfCheckBox _developerMode = new();
@@ -51,6 +53,7 @@ public sealed class MainWindow : Window
         ResourceBudgetService resourceBudgetService,
         ModelSetupService modelSetupService,
         MicrophoneMonitor microphoneMonitor,
+        MicrophoneSelection microphoneSelection,
         StubWakeWordService wakeWordService,
         ISpeechTranscriber speechTranscriber,
         AgentOrchestrator agentOrchestrator)
@@ -60,6 +63,7 @@ public sealed class MainWindow : Window
         _resourceBudgetService = resourceBudgetService;
         _modelSetupService = modelSetupService;
         _microphoneMonitor = microphoneMonitor;
+        _microphoneSelection = microphoneSelection;
         _wakeWordService = wakeWordService;
         _speechTranscriber = speechTranscriber;
         _agentOrchestrator = agentOrchestrator;
@@ -142,6 +146,10 @@ public sealed class MainWindow : Window
             }
         };
 
+        _talkButton.Content = "Talk to Carpet";
+        _talkButton.Margin = new Thickness(0, 0, 8, 0);
+        _talkButton.Click += async (_, _) => await RunTalkToCarpetAsync();
+
         var modelsButton = new WpfButton
         {
             Content = "Model Setup",
@@ -156,6 +164,7 @@ public sealed class MainWindow : Window
         resourceButton.Click += async (_, _) => await RefreshResourceStatusAsync();
 
         toolbar.Children.Add(_pauseButton);
+        toolbar.Children.Add(_talkButton);
         toolbar.Children.Add(modelsButton);
         toolbar.Children.Add(resourceButton);
         WpfDockPanel.SetDock(toolbar, WpfDock.Top);
@@ -228,8 +237,7 @@ public sealed class MainWindow : Window
         try
         {
             _runtimeLog.Info($"Wake detected: {e.Phrase}");
-            var command = await _speechTranscriber.ListenForCommandAsync(_agentRun.Token);
-            await _agentOrchestrator.RunCommandAsync(command.Text, _agentRun.Token);
+            await TranscribeAndRunAsync(_agentRun.Token);
         }
         catch (OperationCanceledException)
         {
@@ -249,6 +257,54 @@ public sealed class MainWindow : Window
         };
         setupWindow.ShowDialog();
         UpdateStatus();
+    }
+
+    private async Task RunTalkToCarpetAsync()
+    {
+        if (_pauseState.IsPaused)
+        {
+            _runtimeLog.Warn("Talk request ignored because assistant is paused.");
+            return;
+        }
+
+        _agentRun?.Cancel();
+        _agentRun = new CancellationTokenSource();
+
+        try
+        {
+            await TranscribeAndRunAsync(_agentRun.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            _runtimeLog.Warn("Talk request cancelled.");
+        }
+        catch (Exception ex)
+        {
+            _runtimeLog.Error(ex.Message);
+        }
+    }
+
+    private async Task TranscribeAndRunAsync(CancellationToken cancellationToken)
+    {
+        StopSelectedMicMonitor();
+        try
+        {
+            var command = await _speechTranscriber.ListenForCommandAsync(cancellationToken);
+            _runtimeLog.Info($"Transcript: {command.Text}");
+
+            if (string.Equals(command.Text.Trim(), "stop", StringComparison.OrdinalIgnoreCase))
+            {
+                _pauseState.Pause();
+                _runtimeLog.Warn("Voice stop detected; assistant paused.");
+                return;
+            }
+
+            await _agentOrchestrator.RunCommandAsync(command.Text, cancellationToken);
+        }
+        finally
+        {
+            StartSelectedMic();
+        }
     }
 
     private async Task RefreshResourceStatusAsync()
@@ -275,15 +331,32 @@ public sealed class MainWindow : Window
     private void UpdateStatus()
     {
         _pauseButton.Content = _pauseState.IsPaused ? "Resume" : "Pause";
+        _talkButton.IsEnabled = !_pauseState.IsPaused;
         if (_pauseState.IsPaused)
         {
             _statusText.Text = "Paused. Ctrl+Alt+Esc and voice stop keep the assistant halted.";
             return;
         }
 
-        _statusText.Text = _modelSetupService.AreRequiredAssetsPresent()
-            ? "Ready. Listening for Hey Carpet."
-            : "Setup required. Open Model Setup and install required assets before CarpetPC can listen normally.";
+        _statusText.Text = GetReadinessMessage();
+    }
+
+    private string GetReadinessMessage()
+    {
+        var hasSpeech = _modelSetupService.IsReadyForVoiceTest();
+        var hasAgent = _modelSetupService.AreRequiredAssetsPresent();
+
+        if (hasAgent)
+        {
+            return "Agent ready. Use Talk to Carpet for voice commands; Hey Carpet wake detection is the next wiring step.";
+        }
+
+        if (hasSpeech)
+        {
+            return "Voice test ready. Use Talk to Carpet to transcribe commands; install LLM assets for desktop actions.";
+        }
+
+        return "Setup required. Install whisper.cpp runtime and Whisper tiny.en in Model Setup before voice commands work.";
     }
 
     private void LoadMicrophones()
@@ -315,6 +388,7 @@ public sealed class MainWindow : Window
 
         try
         {
+            _microphoneSelection.SetSelected(device);
             _microphoneMonitor.Start(device.DeviceNumber);
             _runtimeLog.Info($"Monitoring microphone: {device.Name}.");
         }
@@ -328,4 +402,6 @@ public sealed class MainWindow : Window
     {
         Dispatcher.Invoke(() => _micLevel.Value = Math.Clamp(level * 100, 0, 100));
     }
+
+    private void StopSelectedMicMonitor() => _microphoneMonitor.Stop();
 }

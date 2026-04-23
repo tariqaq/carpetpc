@@ -40,7 +40,9 @@ Models are not committed. The app stores downloaded models under `%LOCALAPPDATA%
 - The normal UI no longer exposes a fake wake button. A manual wake trigger exists only behind `Developer mode`.
 - `Model Setup` shows required assets, confirms before downloads, and stores assets under `%LOCALAPPDATA%\CarpetPC`.
 - The mic selector and live volume bar use the selected Windows recording device.
-- The app will show `Setup required` until required model files exist, including the trained `hey-carpet.onnx` wake-word model.
+- `Talk to Carpet` records from the selected mic, transcribes with `whisper.cpp`, and sends the transcript into the agent loop.
+- The app distinguishes setup states: `Setup required`, `Voice test ready`, and `Agent ready`.
+- The app still needs live ONNX wake-word inference wiring before `Hey Carpet` works hands-free.
 
 ## Wake-Word Training
 

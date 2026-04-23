@@ -28,6 +28,14 @@ First train a free/open `Hey Carpet` wake-word model using the RTX 4060, then re
 - Replace `StubScreenObserver` with screenshot capture plus Windows UI Automation extraction.
 - Remove visible `Simulate Hey Carpet`; keep a dev-only manual trigger behind a `Developer mode` checkbox.
 
+## Immediate Voice-To-Agent Slice
+- Add a `whisper.cpp` runtime asset to Model Setup, separate from the Whisper model file.
+- Replace `StubSpeechTranscriber` with a real transcriber that records from the selected mic, writes a temp WAV, runs Whisper CLI, and returns the transcript.
+- Add a temporary `Talk to Carpet` button for immediate testing: record -> transcribe -> log transcript -> run the agent loop.
+- Keep Whisper CPU-only by default.
+- If the transcript is only `stop`, pause the app instead of sending it to the LLM.
+- Show distinct readiness states: setup required, voice test ready, and agent ready.
+
 ## Phase 4: Desktop Control Loop
 - Use this loop: wake detected -> transcribe command -> capture screenshot/UIA -> ask model for JSON action -> validate risk/confidence -> execute action -> wait -> observe again.
 - Implement first real actions: `open_url`, `open_app`, `type`, `keypress`, `click`, `wait`, `finish`, `abort`, and `ask_confirmation`.

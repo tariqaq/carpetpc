@@ -7,9 +7,9 @@ dist/
 .dotnet-home/
 
 # Local runtime assets and models
-models/
-runtime/models/
-runtime/bin/
+/models/
+/runtime/models/
+/runtime/bin/
 *.gguf
 *.onnx
 *.bin

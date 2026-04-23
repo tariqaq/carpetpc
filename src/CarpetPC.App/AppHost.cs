@@ -33,8 +33,9 @@ public sealed class AppHost : IDisposable
     {
         _paths.EnsureCreated();
         var wakeWord = new StubWakeWordService();
-        var transcriber = new StubSpeechTranscriber();
         var modelSetup = new ModelSetupService(new ModelCatalog(), _paths);
+        var microphoneSelection = new MicrophoneSelection();
+        var transcriber = new WhisperSpeechTranscriber(modelSetup, _paths, microphoneSelection, _runtimeLog);
         var resourceBudget = new ResourceBudgetService();
         var modelRuntime = new LlamaCppModelRuntime(modelSetup, resourceBudget, _runtimeLog);
         var screenObserver = new WindowsScreenObserver();
@@ -53,6 +54,7 @@ public sealed class AppHost : IDisposable
             resourceBudget,
             modelSetup,
             new MicrophoneMonitor(),
+            microphoneSelection,
             wakeWord,
             transcriber,
             orchestrator);

@@ -27,6 +27,14 @@ public sealed class ModelSetupServiceTests
     }
 
     [Fact]
+    public void IsReadyForVoiceTest_IsFalseWhenWhisperAssetsAreMissing()
+    {
+        var service = new ModelSetupService(new ModelCatalog(), new CarpetPaths());
+
+        Assert.False(service.IsReadyForVoiceTest());
+    }
+
+    [Fact]
     public void WakeWordModel_IsManualUntilTrainingExportsOnnx()
     {
         var service = new ModelSetupService(new ModelCatalog(), new CarpetPaths());

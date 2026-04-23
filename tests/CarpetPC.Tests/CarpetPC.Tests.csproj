@@ -17,6 +17,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\CarpetPC.Core\CarpetPC.Core.csproj" />
+    <ProjectReference Include="..\..\src\CarpetPC.App\CarpetPC.App.csproj" />
   </ItemGroup>
 </Project>
-
