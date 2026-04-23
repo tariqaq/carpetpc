@@ -3,6 +3,7 @@ namespace CarpetPC.Core.Models;
 public enum ModelAssetKind
 {
     AgentModel,
+    VisionProjector,
     SpeechModel,
     WakeWordModel,
     Runtime
@@ -49,6 +50,18 @@ public sealed class ModelCatalog
             60L * 1024L * 1024L,
             "Runtime containing llama-server.exe. Install manually until a stable direct runtime URL is configured.",
             true),
+        new(
+            "gemma4-e2b-mmproj",
+            "Gemma 4 E2B vision projector",
+            ModelAssetKind.VisionProjector,
+            "Gemma 4",
+            "mmproj",
+            new Uri("https://huggingface.co/dahus/gemma-4-e2b-it-Q4_K_M-GGUF"),
+            null,
+            "mmproj-gemma-4-E2B-it.gguf",
+            800L * 1024L * 1024L,
+            "Optional multimodal projector for screenshot understanding. Place a compatible mmproj GGUF here manually.",
+            false),
         new(
             "whisper-runtime-win-x64",
             "whisper.cpp Windows x64 runtime",

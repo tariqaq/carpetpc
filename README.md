@@ -41,6 +41,8 @@ Models are not committed. The app stores downloaded models under `%LOCALAPPDATA%
 - `Model Setup` shows required assets, confirms before downloads, and stores assets under `%LOCALAPPDATA%\CarpetPC`.
 - The mic selector and live volume bar use the selected Windows recording device.
 - `Talk to Carpet` records from the selected mic, transcribes with `whisper.cpp`, and sends the transcript into the agent loop.
+- If a compatible llama.cpp `mmproj` GGUF is present under `%LOCALAPPDATA%\CarpetPC\Models\VisionProjector`, the agent sends the current screenshot to the local model through the OpenAI-compatible vision chat endpoint.
+- If no vision projector is present, the agent falls back to the UI Automation element list plus text screen summary.
 - The app distinguishes setup states: `Setup required`, `Voice test ready`, and `Agent ready`.
 - The app still needs live ONNX wake-word inference wiring before `Hey Carpet` works hands-free.
 

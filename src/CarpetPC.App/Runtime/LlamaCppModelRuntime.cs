@@ -18,6 +18,7 @@ public sealed class LlamaCppModelRuntime(
 {
     private readonly HttpClient _httpClient = new();
     private Process? _serverProcess;
+    private bool _visionEnabled;
 
     public bool IsLoaded { get; private set; }
 
@@ -34,6 +35,7 @@ public sealed class LlamaCppModelRuntime(
 
         var llamaServer = FindLlamaServer();
         var modelPath = FindAgentModel();
+        var visionProjectorPath = modelSetupService.FindVisionProjector();
         if (llamaServer is null || modelPath is null)
         {
             runtimeLog.Warn("Cannot load LLM: llama-server.exe or Gemma GGUF model is missing.");
@@ -48,10 +50,14 @@ public sealed class LlamaCppModelRuntime(
             _ => 0
         };
 
+        var visionArguments = visionProjectorPath is null
+            ? string.Empty
+            : $" --mmproj \"{visionProjectorPath}\" --image-max-tokens 768";
+
         _serverProcess = Process.Start(new ProcessStartInfo
         {
             FileName = llamaServer,
-            Arguments = $"-m \"{modelPath}\" --host 127.0.0.1 --port 39287 -c 4096 -ngl {gpuLayers}",
+            Arguments = $"-m \"{modelPath}\" --host 127.0.0.1 --port 39287 -c 4096 -ngl {gpuLayers}{visionArguments}",
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardError = true,
@@ -60,7 +66,11 @@ public sealed class LlamaCppModelRuntime(
 
         ActiveProfile = profile;
         IsLoaded = _serverProcess is not null;
+        _visionEnabled = IsLoaded && visionProjectorPath is not null;
         runtimeLog.Info($"Started llama.cpp server with profile {profile}.");
+        runtimeLog.Info(_visionEnabled
+            ? $"Screenshot vision enabled with projector: {Path.GetFileName(visionProjectorPath)}."
+            : "No vision projector found; screenshot input will use text/UIA fallback.");
         await WaitForServerAsync(cancellationToken);
     }
 
@@ -75,6 +85,7 @@ public sealed class LlamaCppModelRuntime(
         _serverProcess?.Dispose();
         _serverProcess = null;
         IsLoaded = false;
+        _visionEnabled = false;
         return Task.CompletedTask;
     }
 
@@ -95,7 +106,30 @@ public sealed class LlamaCppModelRuntime(
                 "LLM runtime is not installed or not loaded. Open Model Setup.");
         }
 
-        var prompt = BuildPrompt(turn);
+        var prompt = BuildUserPrompt(turn);
+        var content = await CompleteAsync(turn, prompt, cancellationToken);
+        return ParseAction(content);
+    }
+
+    private async Task<string> CompleteAsync(AgentTurn turn, string prompt, CancellationToken cancellationToken)
+    {
+        if (_visionEnabled && turn.Observation.ScreenshotPng is { Length: > 0 } screenshot)
+        {
+            try
+            {
+                return await CompleteWithScreenshotAsync(prompt, screenshot, cancellationToken);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or JsonException)
+            {
+                runtimeLog.Warn($"Screenshot multimodal request failed; falling back to text/UIA prompt. {ex.Message}");
+            }
+        }
+
+        return await CompleteWithTextAsync(prompt, cancellationToken);
+    }
+
+    private async Task<string> CompleteWithTextAsync(string prompt, CancellationToken cancellationToken)
+    {
         var response = await _httpClient.PostAsJsonAsync(
             "http://127.0.0.1:39287/completion",
             new
@@ -108,7 +142,59 @@ public sealed class LlamaCppModelRuntime(
 
         response.EnsureSuccessStatusCode();
         var completion = await response.Content.ReadFromJsonAsync<LlamaCompletionResponse>(cancellationToken);
-        return ParseAction(completion?.Content ?? string.Empty);
+        return completion?.Content ?? string.Empty;
+    }
+
+    private async Task<string> CompleteWithScreenshotAsync(string prompt, byte[] screenshotPng, CancellationToken cancellationToken)
+    {
+        var imageDataUrl = $"data:image/png;base64,{Convert.ToBase64String(screenshotPng)}";
+        var response = await _httpClient.PostAsJsonAsync(
+            "http://127.0.0.1:39287/v1/chat/completions",
+            new
+            {
+                messages = new object[]
+                {
+                    new
+                    {
+                        role = "system",
+                        content = BuildSystemPrompt()
+                    },
+                    new
+                    {
+                        role = "user",
+                        content = new object[]
+                        {
+                            new
+                            {
+                                type = "text",
+                                text = prompt
+                            },
+                            new
+                            {
+                                type = "image_url",
+                                image_url = new
+                                {
+                                    url = imageDataUrl
+                                }
+                            }
+                        }
+                    }
+                },
+                temperature = 0.1,
+                max_tokens = 256
+            },
+            cancellationToken);
+
+        var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException($"{(int)response.StatusCode} {response.ReasonPhrase}: {responseText}");
+        }
+
+        var completion = JsonSerializer.Deserialize<LlamaChatCompletionResponse>(
+            responseText,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        return completion?.Choices?.FirstOrDefault()?.Message?.Content ?? string.Empty;
     }
 
     public void Dispose()
@@ -152,13 +238,19 @@ public sealed class LlamaCppModelRuntime(
         runtimeLog.Warn("llama.cpp server did not report healthy within the startup window.");
     }
 
-    private static string BuildPrompt(AgentTurn turn)
+    private static string BuildSystemPrompt()
+    {
+        return "You are CarpetPC, a local Windows desktop control agent. Return only one JSON object with: action,target,text,confidence,riskLevel,summary.";
+    }
+
+    private static string BuildUserPrompt(AgentTurn turn)
     {
         var builder = new StringBuilder();
-        builder.AppendLine("You are CarpetPC, a local Windows desktop control agent.");
+        builder.AppendLine(BuildSystemPrompt());
         builder.AppendLine("Return only one JSON object with: action,target,text,confidence,riskLevel,summary.");
         builder.AppendLine("Allowed actions: open_url, open_app, click, type, keypress, wait, ask_confirmation, finish, abort.");
         builder.AppendLine("Risk levels: Low, Medium, High. Use High for purchases, installs, deletes, account changes, sending messages, or uncertain clicks.");
+        builder.AppendLine("When a screenshot is attached, use it together with the UI elements to choose visible targets.");
         builder.AppendLine();
         builder.AppendLine($"User command: {turn.UserCommand}");
         builder.AppendLine($"Progress: {turn.ProgressSummary}");
@@ -212,6 +304,12 @@ public sealed class LlamaCppModelRuntime(
     };
 
     private sealed record LlamaCompletionResponse([property: JsonPropertyName("content")] string Content);
+
+    private sealed record LlamaChatCompletionResponse([property: JsonPropertyName("choices")] IReadOnlyList<LlamaChatChoice>? Choices);
+
+    private sealed record LlamaChatChoice([property: JsonPropertyName("message")] LlamaChatMessage? Message);
+
+    private sealed record LlamaChatMessage([property: JsonPropertyName("content")] string? Content);
 
     private sealed record ModelActionDto(
         string? Action,

@@ -26,6 +26,11 @@ public sealed class ModelSetupService(ModelCatalog catalog, CarpetPaths paths, H
             return Directory.EnumerateFiles(Path.Combine(paths.ModelDirectory, item.Kind.ToString()), "*.gguf", SearchOption.AllDirectories).Any();
         }
 
+        if (item.Kind == ModelAssetKind.VisionProjector)
+        {
+            return FindVisionProjector() is not null;
+        }
+
         if (item.Kind != ModelAssetKind.Runtime)
         {
             return false;
@@ -74,6 +79,26 @@ public sealed class ModelSetupService(ModelCatalog catalog, CarpetPaths paths, H
         return Directory.Exists(agentDirectory)
             ? Directory.EnumerateFiles(agentDirectory, "*.gguf", SearchOption.AllDirectories).FirstOrDefault()
             : null;
+    }
+
+    public string? FindVisionProjector()
+    {
+        var configured = catalog.Items.FirstOrDefault(item => item.Kind == ModelAssetKind.VisionProjector);
+        if (configured is not null && File.Exists(GetAssetPath(configured)))
+        {
+            return GetAssetPath(configured);
+        }
+
+        var projectorDirectory = Path.Combine(paths.ModelDirectory, ModelAssetKind.VisionProjector.ToString());
+        if (!Directory.Exists(projectorDirectory))
+        {
+            return null;
+        }
+
+        return Directory
+            .EnumerateFiles(projectorDirectory, "*.gguf", SearchOption.AllDirectories)
+            .OrderByDescending(path => Path.GetFileName(path).Contains("mmproj", StringComparison.OrdinalIgnoreCase))
+            .FirstOrDefault();
     }
 
     public string? FindRuntimeExecutable(string fileName)

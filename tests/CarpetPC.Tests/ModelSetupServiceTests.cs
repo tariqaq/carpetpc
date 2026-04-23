@@ -38,4 +38,16 @@ public sealed class ModelSetupServiceTests
 
         Assert.Equal("gemma-4-E2B-it-Q4_K_M.gguf", agentModel.FileName);
     }
+
+    [Fact]
+    public void VisionProjector_IsOptionalManualAsset()
+    {
+        var service = new ModelSetupService(new ModelCatalog(), new CarpetPaths());
+
+        var projector = service.GetAvailableModels().Single(model => model.Kind == ModelAssetKind.VisionProjector);
+
+        Assert.False(projector.Required);
+        Assert.Null(projector.DirectDownloadUri);
+        Assert.Contains("mmproj", projector.FileName);
+    }
 }
