@@ -19,6 +19,7 @@ public sealed class LlamaCppModelRuntime(
     private readonly HttpClient _httpClient = new();
     private Process? _serverProcess;
     private bool _visionEnabled;
+    private volatile bool _serverReportedModelLoaded;
 
     public bool IsLoaded { get; private set; }
 
@@ -37,6 +38,7 @@ public sealed class LlamaCppModelRuntime(
 
         await UnloadAsync(cancellationToken);
         IsLoading = true;
+        _serverReportedModelLoaded = false;
         StatusMessage = $"Starting llama.cpp with profile {profile}...";
         runtimeLog.Info(StatusMessage);
 
@@ -66,7 +68,7 @@ public sealed class LlamaCppModelRuntime(
         _serverProcess = Process.Start(new ProcessStartInfo
         {
             FileName = llamaServer,
-            Arguments = $"-m \"{modelPath}\" --host 127.0.0.1 --port 39287 -c 4096 -ngl {gpuLayers}{visionArguments}",
+            Arguments = $"-m \"{modelPath}\" --host 127.0.0.1 --port 39287 -c 4096 -b 2048 -ub 1024 --parallel 1 --cache-ram 0 -ngl {gpuLayers}{visionArguments}",
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardError = true,
@@ -103,6 +105,7 @@ public sealed class LlamaCppModelRuntime(
         IsLoading = false;
         IsLoaded = false;
         _visionEnabled = false;
+        _serverReportedModelLoaded = false;
         StatusMessage = "LLM not loaded.";
         return Task.CompletedTask;
     }
@@ -140,6 +143,12 @@ public sealed class LlamaCppModelRuntime(
             catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or JsonException)
             {
                 runtimeLog.Warn($"Screenshot multimodal request failed; falling back to text/UIA prompt. {ex.Message}");
+                if (_serverProcess is { HasExited: true })
+                {
+                    IsLoaded = false;
+                    StatusMessage = $"llama.cpp exited during screenshot processing with code {_serverProcess.ExitCode}.";
+                    throw new InvalidOperationException(StatusMessage, ex);
+                }
             }
         }
 
@@ -250,6 +259,7 @@ public sealed class LlamaCppModelRuntime(
         {
             if (!string.IsNullOrWhiteSpace(e.Data))
             {
+                TrackServerReadiness(e.Data);
                 runtimeLog.Info($"llama.cpp: {e.Data}");
             }
         };
@@ -257,11 +267,21 @@ public sealed class LlamaCppModelRuntime(
         {
             if (!string.IsNullOrWhiteSpace(e.Data))
             {
+                TrackServerReadiness(e.Data);
                 runtimeLog.Warn($"llama.cpp: {e.Data}");
             }
         };
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
+    }
+
+    private void TrackServerReadiness(string line)
+    {
+        if (line.Contains("main: model loaded", StringComparison.OrdinalIgnoreCase))
+        {
+            _serverReportedModelLoaded = true;
+            StatusMessage = "llama.cpp reported model loaded; waiting for healthy server.";
+        }
     }
 
     private async Task<bool> WaitForServerAsync(CancellationToken cancellationToken)
@@ -281,14 +301,16 @@ public sealed class LlamaCppModelRuntime(
             try
             {
                 using var response = await _httpClient.GetAsync("http://127.0.0.1:39287/health", cancellationToken);
-                if (response.IsSuccessStatusCode)
+                if (response.IsSuccessStatusCode && _serverReportedModelLoaded)
                 {
                     runtimeLog.Info($"llama.cpp server is healthy after {(DateTimeOffset.Now - startedAt).TotalSeconds:0}s.");
                     return true;
                 }
 
                 var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
-                StatusMessage = $"LLM loading: health returned {(int)response.StatusCode} {response.ReasonPhrase}.";
+                StatusMessage = response.IsSuccessStatusCode
+                    ? "LLM server health endpoint is up; waiting for model loaded signal."
+                    : $"LLM loading: health returned {(int)response.StatusCode} {response.ReasonPhrase}.";
                 if (attempt == 1 || attempt % 10 == 0)
                 {
                     runtimeLog.Info($"{StatusMessage} {responseText}");
