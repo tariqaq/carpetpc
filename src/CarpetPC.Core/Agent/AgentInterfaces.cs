@@ -7,7 +7,11 @@ public interface IModelRuntime
 {
     bool IsLoaded { get; }
 
+    bool IsLoading { get; }
+
     RuntimeProfile ActiveProfile { get; }
+
+    string StatusMessage { get; }
 
     Task LoadAsync(RuntimeProfile profile, CancellationToken cancellationToken);
 

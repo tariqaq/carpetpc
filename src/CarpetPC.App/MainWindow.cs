@@ -35,11 +35,13 @@ public sealed class MainWindow : Window
     private readonly MicrophoneSelection _microphoneSelection;
     private readonly StubWakeWordService _wakeWordService;
     private readonly ISpeechTranscriber _speechTranscriber;
+    private readonly IModelRuntime _modelRuntime;
     private readonly AgentOrchestrator _agentOrchestrator;
     private readonly WpfTextBox _logBox = new();
     private readonly WpfTextBlock _statusText = new();
     private readonly WpfButton _pauseButton = new();
     private readonly WpfButton _talkButton = new();
+    private readonly WpfButton _loadModelButton = new();
     private readonly WpfComboBox _micSelector = new();
     private readonly WpfProgressBar _micLevel = new();
     private readonly WpfCheckBox _developerMode = new();
@@ -56,6 +58,7 @@ public sealed class MainWindow : Window
         MicrophoneSelection microphoneSelection,
         StubWakeWordService wakeWordService,
         ISpeechTranscriber speechTranscriber,
+        IModelRuntime modelRuntime,
         AgentOrchestrator agentOrchestrator)
     {
         _runtimeLog = runtimeLog;
@@ -66,6 +69,7 @@ public sealed class MainWindow : Window
         _microphoneSelection = microphoneSelection;
         _wakeWordService = wakeWordService;
         _speechTranscriber = speechTranscriber;
+        _modelRuntime = modelRuntime;
         _agentOrchestrator = agentOrchestrator;
 
         Title = "CarpetPC";
@@ -150,6 +154,10 @@ public sealed class MainWindow : Window
         _talkButton.Margin = new Thickness(0, 0, 8, 0);
         _talkButton.Click += async (_, _) => await RunTalkToCarpetAsync();
 
+        _loadModelButton.Content = "Load LLM";
+        _loadModelButton.Margin = new Thickness(0, 0, 8, 0);
+        _loadModelButton.Click += async (_, _) => await ToggleModelLoadAsync();
+
         var modelsButton = new WpfButton
         {
             Content = "Model Setup",
@@ -165,6 +173,7 @@ public sealed class MainWindow : Window
 
         toolbar.Children.Add(_pauseButton);
         toolbar.Children.Add(_talkButton);
+        toolbar.Children.Add(_loadModelButton);
         toolbar.Children.Add(modelsButton);
         toolbar.Children.Add(resourceButton);
         WpfDockPanel.SetDock(toolbar, WpfDock.Top);
@@ -284,6 +293,35 @@ public sealed class MainWindow : Window
         }
     }
 
+    private async Task ToggleModelLoadAsync()
+    {
+        _loadModelButton.IsEnabled = false;
+        try
+        {
+            if (_modelRuntime.IsLoaded || _modelRuntime.IsLoading)
+            {
+                await _modelRuntime.UnloadAsync(CancellationToken.None);
+                UpdateStatus();
+                return;
+            }
+
+            var snapshot = await _resourceBudgetService.CaptureAsync(CancellationToken.None);
+            var profile = _resourceBudgetService.SelectProfile(snapshot);
+            _runtimeLog.Info($"Manual LLM load requested with profile {profile}.");
+            await _modelRuntime.LoadAsync(profile, CancellationToken.None);
+            UpdateStatus();
+        }
+        catch (Exception ex)
+        {
+            _runtimeLog.Error($"Manual LLM load failed: {ex.Message}");
+        }
+        finally
+        {
+            _loadModelButton.IsEnabled = true;
+            UpdateStatus();
+        }
+    }
+
     private async Task TranscribeAndRunAsync(CancellationToken cancellationToken)
     {
         StopSelectedMicMonitor();
@@ -325,6 +363,7 @@ public sealed class MainWindow : Window
         {
             _logBox.AppendText($"[{entry.Timestamp:HH:mm:ss}] {entry.Level}: {entry.Message}{Environment.NewLine}");
             _logBox.ScrollToEnd();
+            UpdateStatus();
         });
     }
 
@@ -332,13 +371,15 @@ public sealed class MainWindow : Window
     {
         _pauseButton.Content = _pauseState.IsPaused ? "Resume" : "Pause";
         _talkButton.IsEnabled = !_pauseState.IsPaused;
+        _loadModelButton.Content = _modelRuntime.IsLoaded || _modelRuntime.IsLoading ? "Unload LLM" : "Load LLM";
+        _loadModelButton.IsEnabled = !_modelRuntime.IsLoading;
         if (_pauseState.IsPaused)
         {
-            _statusText.Text = "Paused. Ctrl+Alt+Esc and voice stop keep the assistant halted.";
+            _statusText.Text = $"Paused. Ctrl+Alt+Esc and voice stop keep the assistant halted. LLM: {_modelRuntime.StatusMessage}";
             return;
         }
 
-        _statusText.Text = GetReadinessMessage();
+        _statusText.Text = $"{GetReadinessMessage()} LLM: {_modelRuntime.StatusMessage}";
     }
 
     private string GetReadinessMessage()

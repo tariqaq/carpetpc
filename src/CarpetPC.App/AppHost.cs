@@ -17,9 +17,9 @@ namespace CarpetPC.App;
 public sealed class AppHost : IDisposable
 {
     private readonly WpfApplication _application;
-    private readonly RuntimeLog _runtimeLog = new();
     private readonly PauseState _pauseState = new();
     private readonly CarpetPaths _paths = new();
+    private readonly RuntimeLog _runtimeLog;
     private MainWindow? _mainWindow;
     private TrayIconService? _trayIcon;
     private GlobalHotkeyService? _hotkeys;
@@ -27,6 +27,7 @@ public sealed class AppHost : IDisposable
     public AppHost(WpfApplication application)
     {
         _application = application;
+        _runtimeLog = new RuntimeLog(_paths.LogDirectory);
     }
 
     public void Start()
@@ -57,6 +58,7 @@ public sealed class AppHost : IDisposable
             microphoneSelection,
             wakeWord,
             transcriber,
+            modelRuntime,
             orchestrator);
 
         _trayIcon = new TrayIconService(_mainWindow, _application, _pauseState, _runtimeLog);

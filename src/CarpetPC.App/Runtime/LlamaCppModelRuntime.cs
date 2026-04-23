@@ -22,7 +22,11 @@ public sealed class LlamaCppModelRuntime(
 
     public bool IsLoaded { get; private set; }
 
+    public bool IsLoading { get; private set; }
+
     public RuntimeProfile ActiveProfile { get; private set; } = RuntimeProfile.WakeOnly;
+
+    public string StatusMessage { get; private set; } = "LLM not loaded.";
 
     public async Task LoadAsync(RuntimeProfile profile, CancellationToken cancellationToken)
     {
@@ -32,12 +36,17 @@ public sealed class LlamaCppModelRuntime(
         }
 
         await UnloadAsync(cancellationToken);
+        IsLoading = true;
+        StatusMessage = $"Starting llama.cpp with profile {profile}...";
+        runtimeLog.Info(StatusMessage);
 
         var llamaServer = FindLlamaServer();
         var modelPath = FindAgentModel();
         var visionProjectorPath = modelSetupService.FindVisionProjector();
         if (llamaServer is null || modelPath is null)
         {
+            IsLoading = false;
+            StatusMessage = "LLM missing llama-server.exe or Gemma GGUF model.";
             runtimeLog.Warn("Cannot load LLM: llama-server.exe or Gemma GGUF model is missing.");
             return;
         }
@@ -65,13 +74,20 @@ public sealed class LlamaCppModelRuntime(
         });
 
         ActiveProfile = profile;
-        IsLoaded = _serverProcess is not null;
-        _visionEnabled = IsLoaded && visionProjectorPath is not null;
+        IsLoaded = false;
+        _visionEnabled = _serverProcess is not null && visionProjectorPath is not null;
+        AttachServerLogging(_serverProcess);
         runtimeLog.Info($"Started llama.cpp server with profile {profile}.");
         runtimeLog.Info(_visionEnabled
             ? $"Screenshot vision enabled with projector: {Path.GetFileName(visionProjectorPath)}."
             : "No vision projector found; screenshot input will use text/UIA fallback.");
-        await WaitForServerAsync(cancellationToken);
+        var ready = await WaitForServerAsync(cancellationToken);
+        IsLoading = false;
+        IsLoaded = ready;
+        StatusMessage = ready
+            ? $"LLM loaded. Profile: {profile}; vision: {(_visionEnabled ? "enabled" : "fallback")}."
+            : "LLM server started but did not finish loading in time.";
+        runtimeLog.Info(StatusMessage);
     }
 
     public Task UnloadAsync(CancellationToken cancellationToken)
@@ -84,8 +100,10 @@ public sealed class LlamaCppModelRuntime(
 
         _serverProcess?.Dispose();
         _serverProcess = null;
+        IsLoading = false;
         IsLoaded = false;
         _visionEnabled = false;
+        StatusMessage = "LLM not loaded.";
         return Task.CompletedTask;
     }
 
@@ -103,7 +121,7 @@ public sealed class LlamaCppModelRuntime(
                 null,
                 1,
                 RiskLevel.Low,
-                "LLM runtime is not installed or not loaded. Open Model Setup.");
+                $"LLM runtime is not ready. {StatusMessage}");
         }
 
         var prompt = BuildUserPrompt(turn);
@@ -140,7 +158,12 @@ public sealed class LlamaCppModelRuntime(
             },
             cancellationToken);
 
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new InvalidOperationException($"{(int)response.StatusCode} {response.ReasonPhrase}: {responseText}");
+        }
+
         var completion = await response.Content.ReadFromJsonAsync<LlamaCompletionResponse>(cancellationToken);
         return completion?.Content ?? string.Empty;
     }
@@ -216,26 +239,75 @@ public sealed class LlamaCppModelRuntime(
         return modelSetupService.FindAgentModel();
     }
 
-    private async Task WaitForServerAsync(CancellationToken cancellationToken)
+    private void AttachServerLogging(Process? process)
     {
-        for (var attempt = 0; attempt < 30; attempt++)
+        if (process is null)
+        {
+            return;
+        }
+
+        process.OutputDataReceived += (_, e) =>
+        {
+            if (!string.IsNullOrWhiteSpace(e.Data))
+            {
+                runtimeLog.Info($"llama.cpp: {e.Data}");
+            }
+        };
+        process.ErrorDataReceived += (_, e) =>
+        {
+            if (!string.IsNullOrWhiteSpace(e.Data))
+            {
+                runtimeLog.Warn($"llama.cpp: {e.Data}");
+            }
+        };
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+    }
+
+    private async Task<bool> WaitForServerAsync(CancellationToken cancellationToken)
+    {
+        var startedAt = DateTimeOffset.Now;
+        for (var attempt = 1; attempt <= 180; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            if (_serverProcess is { HasExited: true })
+            {
+                StatusMessage = $"llama.cpp exited during model load with code {_serverProcess.ExitCode}.";
+                runtimeLog.Error(StatusMessage);
+                return false;
+            }
+
             try
             {
                 using var response = await _httpClient.GetAsync("http://127.0.0.1:39287/health", cancellationToken);
                 if (response.IsSuccessStatusCode)
                 {
-                    return;
+                    runtimeLog.Info($"llama.cpp server is healthy after {(DateTimeOffset.Now - startedAt).TotalSeconds:0}s.");
+                    return true;
+                }
+
+                var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
+                StatusMessage = $"LLM loading: health returned {(int)response.StatusCode} {response.ReasonPhrase}.";
+                if (attempt == 1 || attempt % 10 == 0)
+                {
+                    runtimeLog.Info($"{StatusMessage} {responseText}");
                 }
             }
-            catch
+            catch (HttpRequestException ex)
             {
-                await Task.Delay(500, cancellationToken);
+                StatusMessage = $"Waiting for llama.cpp server to accept connections: {ex.Message}";
+                if (attempt == 1 || attempt % 10 == 0)
+                {
+                    runtimeLog.Info(StatusMessage);
+                }
             }
+
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
         }
 
         runtimeLog.Warn("llama.cpp server did not report healthy within the startup window.");
+        return false;
     }
 
     private static string BuildSystemPrompt()
