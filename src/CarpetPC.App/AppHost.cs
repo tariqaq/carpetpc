@@ -8,13 +8,13 @@ using CarpetPC.Core.Audio;
 using CarpetPC.Core.Models;
 using CarpetPC.Core.Observation;
 using CarpetPC.Core.Safety;
-using System.Windows;
+using WpfApplication = System.Windows.Application;
 
 namespace CarpetPC.App;
 
 public sealed class AppHost : IDisposable
 {
-    private readonly Application _application;
+    private readonly WpfApplication _application;
     private readonly RuntimeLog _runtimeLog = new();
     private readonly PauseState _pauseState = new();
     private readonly CarpetPaths _paths = new();
@@ -22,7 +22,7 @@ public sealed class AppHost : IDisposable
     private TrayIconService? _trayIcon;
     private GlobalHotkeyService? _hotkeys;
 
-    public AppHost(Application application)
+    public AppHost(WpfApplication application)
     {
         _application = application;
     }
@@ -64,4 +64,3 @@ public sealed class AppHost : IDisposable
         _trayIcon?.Dispose();
     }
 }
-

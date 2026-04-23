@@ -1,8 +1,10 @@
 # Build output
 bin/
 obj/
+dist/
 .vs/
 .vscode/
+.dotnet-home/
 
 # Local runtime assets and models
 models/
@@ -28,4 +30,3 @@ debug-dumps/
 *.sln.docstates
 appsettings.Local.json
 settings.local.json
-

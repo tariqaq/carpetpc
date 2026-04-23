@@ -5,8 +5,22 @@ using CarpetPC.Core.Models;
 using CarpetPC.Core.Safety;
 using System.Text;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Media;
+using WpfBrushes = System.Windows.Media.Brushes;
+using WpfColor = System.Windows.Media.Color;
+using WpfDock = System.Windows.Controls.Dock;
+using WpfButton = System.Windows.Controls.Button;
+using WpfDockPanel = System.Windows.Controls.DockPanel;
+using WpfFontFamily = System.Windows.Media.FontFamily;
+using WpfMessageBox = System.Windows.MessageBox;
+using WpfMessageBoxButton = System.Windows.MessageBoxButton;
+using WpfMessageBoxImage = System.Windows.MessageBoxImage;
+using WpfOrientation = System.Windows.Controls.Orientation;
+using WpfScrollBarVisibility = System.Windows.Controls.ScrollBarVisibility;
+using WpfStackPanel = System.Windows.Controls.StackPanel;
+using WpfTextBlock = System.Windows.Controls.TextBlock;
+using WpfTextBox = System.Windows.Controls.TextBox;
+using WpfTextWrapping = System.Windows.TextWrapping;
+using WpfSolidColorBrush = System.Windows.Media.SolidColorBrush;
 
 namespace CarpetPC.App;
 
@@ -19,9 +33,9 @@ public sealed class MainWindow : Window
     private readonly StubWakeWordService _wakeWordService;
     private readonly ISpeechTranscriber _speechTranscriber;
     private readonly AgentOrchestrator _agentOrchestrator;
-    private readonly TextBox _logBox = new();
-    private readonly TextBlock _statusText = new();
-    private readonly Button _pauseButton = new();
+    private readonly WpfTextBox _logBox = new();
+    private readonly WpfTextBlock _statusText = new();
+    private readonly WpfButton _pauseButton = new();
     private CancellationTokenSource? _agentRun;
     private bool _allowClose;
 
@@ -47,7 +61,7 @@ public sealed class MainWindow : Window
         Height = 560;
         MinWidth = 620;
         MinHeight = 420;
-        Background = new SolidColorBrush(Color.FromRgb(18, 20, 22));
+        Background = new WpfSolidColorBrush(WpfColor.FromRgb(18, 20, 22));
         Content = BuildContent();
 
         _runtimeLog.EntryWritten += OnLogEntry;
@@ -74,27 +88,27 @@ public sealed class MainWindow : Window
 
     private UIElement BuildContent()
     {
-        var root = new DockPanel { Margin = new Thickness(18) };
-        var title = new TextBlock
+        var root = new WpfDockPanel { Margin = new Thickness(18) };
+        var title = new WpfTextBlock
         {
             Text = "CarpetPC",
             FontSize = 28,
             FontWeight = FontWeights.Bold,
-            Foreground = Brushes.White,
+            Foreground = WpfBrushes.White,
             Margin = new Thickness(0, 0, 0, 8)
         };
 
-        DockPanel.SetDock(title, Dock.Top);
+        WpfDockPanel.SetDock(title, WpfDock.Top);
         root.Children.Add(title);
 
-        _statusText.Foreground = Brushes.LightGray;
+        _statusText.Foreground = WpfBrushes.LightGray;
         _statusText.Margin = new Thickness(0, 0, 0, 12);
-        DockPanel.SetDock(_statusText, Dock.Top);
+        WpfDockPanel.SetDock(_statusText, WpfDock.Top);
         root.Children.Add(_statusText);
 
-        var toolbar = new StackPanel
+        var toolbar = new WpfStackPanel
         {
-            Orientation = Orientation.Horizontal,
+            Orientation = WpfOrientation.Horizontal,
             Margin = new Thickness(0, 0, 0, 12)
         };
 
@@ -114,21 +128,21 @@ public sealed class MainWindow : Window
             }
         };
 
-        var simulateWakeButton = new Button
+        var simulateWakeButton = new WpfButton
         {
             Content = "Simulate Hey Carpet",
             Margin = new Thickness(0, 0, 8, 0)
         };
         simulateWakeButton.Click += (_, _) => _wakeWordService.SimulateWake();
 
-        var modelsButton = new Button
+        var modelsButton = new WpfButton
         {
             Content = "Model Setup",
             Margin = new Thickness(0, 0, 8, 0)
         };
         modelsButton.Click += (_, _) => ShowModelPrompt();
 
-        var resourceButton = new Button
+        var resourceButton = new WpfButton
         {
             Content = "Refresh Resources"
         };
@@ -138,16 +152,16 @@ public sealed class MainWindow : Window
         toolbar.Children.Add(simulateWakeButton);
         toolbar.Children.Add(modelsButton);
         toolbar.Children.Add(resourceButton);
-        DockPanel.SetDock(toolbar, Dock.Top);
+        WpfDockPanel.SetDock(toolbar, WpfDock.Top);
         root.Children.Add(toolbar);
 
         _logBox.IsReadOnly = true;
-        _logBox.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
-        _logBox.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
-        _logBox.Background = new SolidColorBrush(Color.FromRgb(6, 7, 8));
-        _logBox.Foreground = new SolidColorBrush(Color.FromRgb(187, 255, 204));
-        _logBox.FontFamily = new FontFamily("Cascadia Mono");
-        _logBox.TextWrapping = TextWrapping.NoWrap;
+        _logBox.VerticalScrollBarVisibility = WpfScrollBarVisibility.Auto;
+        _logBox.HorizontalScrollBarVisibility = WpfScrollBarVisibility.Auto;
+        _logBox.Background = new WpfSolidColorBrush(WpfColor.FromRgb(6, 7, 8));
+        _logBox.Foreground = new WpfSolidColorBrush(WpfColor.FromRgb(187, 255, 204));
+        _logBox.FontFamily = new WpfFontFamily("Cascadia Mono");
+        _logBox.TextWrapping = WpfTextWrapping.NoWrap;
         root.Children.Add(_logBox);
 
         UpdateStatus();
@@ -196,7 +210,7 @@ public sealed class MainWindow : Window
             builder.AppendLine($"  Status: {(_modelSetupService.IsModelPresent(item) ? "Present" : "Missing")}");
         }
 
-        MessageBox.Show(this, builder.ToString(), "Model Setup", MessageBoxButton.OK, MessageBoxImage.Information);
+        WpfMessageBox.Show(this, builder.ToString(), "Model Setup", WpfMessageBoxButton.OK, WpfMessageBoxImage.Information);
     }
 
     private async Task RefreshResourceStatusAsync()

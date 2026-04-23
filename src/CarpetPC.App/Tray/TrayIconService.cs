@@ -1,19 +1,20 @@
 using CarpetPC.Core;
 using CarpetPC.Core.Safety;
-using System.Windows;
 using Forms = System.Windows.Forms;
+using WpfApplication = System.Windows.Application;
+using WpfWindow = System.Windows.Window;
 
 namespace CarpetPC.App.Tray;
 
 public sealed class TrayIconService : IDisposable
 {
-    private readonly Window _window;
-    private readonly Application _application;
+    private readonly WpfWindow _window;
+    private readonly WpfApplication _application;
     private readonly PauseState _pauseState;
     private readonly IRuntimeLog _runtimeLog;
     private readonly Forms.NotifyIcon _notifyIcon;
 
-    public TrayIconService(Window window, Application application, PauseState pauseState, IRuntimeLog runtimeLog)
+    public TrayIconService(WpfWindow window, WpfApplication application, PauseState pauseState, IRuntimeLog runtimeLog)
     {
         _window = window;
         _application = application;

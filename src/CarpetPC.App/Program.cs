@@ -1,4 +1,5 @@
 using System.Windows;
+using WpfApplication = System.Windows.Application;
 
 namespace CarpetPC.App;
 
@@ -7,7 +8,7 @@ public static class Program
     [STAThread]
     public static void Main()
     {
-        var application = new Application
+        var application = new WpfApplication
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown
         };
@@ -18,4 +19,3 @@ public static class Program
         host.Dispose();
     }
 }
-
