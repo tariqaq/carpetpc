@@ -1,0 +1,31 @@
+# Build output
+bin/
+obj/
+.vs/
+.vscode/
+
+# Local runtime assets and models
+models/
+runtime/models/
+runtime/bin/
+*.gguf
+*.onnx
+*.bin
+*.safetensors
+*.pt
+*.pth
+
+# Logs and sensitive debug captures
+logs/
+debug-dumps/
+*.log
+*.dmp
+
+# User-local configuration and secrets
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+appsettings.Local.json
+settings.local.json
+
