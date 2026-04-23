@@ -34,4 +34,3 @@ dotnet test
 ```
 
 Models are not committed. The app stores downloaded models under `%LOCALAPPDATA%\CarpetPC\Models` after explicit user confirmation.
-
