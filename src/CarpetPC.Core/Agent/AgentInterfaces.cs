@@ -13,6 +13,8 @@ public interface IModelRuntime
 
     string StatusMessage { get; }
 
+    bool VisionModeEnabled { get; set; }
+
     Task LoadAsync(RuntimeProfile profile, CancellationToken cancellationToken);
 
     Task UnloadAsync(CancellationToken cancellationToken);

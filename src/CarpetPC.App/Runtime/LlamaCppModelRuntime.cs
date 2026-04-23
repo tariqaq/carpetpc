@@ -29,6 +29,8 @@ public sealed class LlamaCppModelRuntime(
 
     public string StatusMessage { get; private set; } = "LLM not loaded.";
 
+    public bool VisionModeEnabled { get; set; }
+
     public async Task LoadAsync(RuntimeProfile profile, CancellationToken cancellationToken)
     {
         if (IsLoaded && ActiveProfile == profile)
@@ -44,7 +46,7 @@ public sealed class LlamaCppModelRuntime(
 
         var llamaServer = FindLlamaServer();
         var modelPath = FindAgentModel();
-        var visionProjectorPath = modelSetupService.FindVisionProjector();
+        var visionProjectorPath = VisionModeEnabled ? modelSetupService.FindVisionProjector() : null;
         if (llamaServer is null || modelPath is null)
         {
             IsLoading = false;
@@ -82,7 +84,9 @@ public sealed class LlamaCppModelRuntime(
         runtimeLog.Info($"Started llama.cpp server with profile {profile}.");
         runtimeLog.Info(_visionEnabled
             ? $"Screenshot vision enabled with projector: {Path.GetFileName(visionProjectorPath)}."
-            : "No vision projector found; screenshot input will use text/UIA fallback.");
+            : VisionModeEnabled
+                ? "No vision projector found; screenshot input will use text/UIA fallback."
+                : "Vision mode disabled; using text/UIA fallback.");
         var ready = await WaitForServerAsync(cancellationToken);
         IsLoading = false;
         IsLoaded = ready;

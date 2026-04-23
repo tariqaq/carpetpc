@@ -13,6 +13,8 @@ public sealed class StubModelRuntime(IRuntimeLog runtimeLog) : IModelRuntime
 
     public string StatusMessage { get; private set; } = "Stub model not loaded.";
 
+    public bool VisionModeEnabled { get; set; }
+
     public Task LoadAsync(RuntimeProfile profile, CancellationToken cancellationToken)
     {
         IsLoading = false;

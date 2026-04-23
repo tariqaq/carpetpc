@@ -45,6 +45,7 @@ public sealed class MainWindow : Window
     private readonly WpfComboBox _micSelector = new();
     private readonly WpfProgressBar _micLevel = new();
     private readonly WpfCheckBox _developerMode = new();
+    private readonly WpfCheckBox _visionMode = new();
     private readonly WpfButton _simulateWakeButton = new();
     private CancellationTokenSource? _agentRun;
     private bool _allowClose;
@@ -208,12 +209,20 @@ public sealed class MainWindow : Window
         _developerMode.Checked += (_, _) => _simulateWakeButton.Visibility = Visibility.Visible;
         _developerMode.Unchecked += (_, _) => _simulateWakeButton.Visibility = Visibility.Collapsed;
 
+        _visionMode.Content = "Vision screenshots";
+        _visionMode.Foreground = WpfBrushes.White;
+        _visionMode.Margin = new Thickness(0, 0, 10, 0);
+        _visionMode.IsChecked = _modelRuntime.VisionModeEnabled;
+        _visionMode.Checked += async (_, _) => await SetVisionModeAsync(enabled: true);
+        _visionMode.Unchecked += async (_, _) => await SetVisionModeAsync(enabled: false);
+
         _simulateWakeButton.Content = "Simulate Hey Carpet";
         _simulateWakeButton.Visibility = Visibility.Collapsed;
         _simulateWakeButton.Click += (_, _) => _wakeWordService.SimulateWake();
 
         micPanel.Children.Add(_micSelector);
         micPanel.Children.Add(_micLevel);
+        micPanel.Children.Add(_visionMode);
         micPanel.Children.Add(_developerMode);
         micPanel.Children.Add(_simulateWakeButton);
         WpfDockPanel.SetDock(micPanel, WpfDock.Top);
@@ -322,6 +331,29 @@ public sealed class MainWindow : Window
         }
     }
 
+    private async Task SetVisionModeAsync(bool enabled)
+    {
+        if (_modelRuntime.VisionModeEnabled == enabled)
+        {
+            return;
+        }
+
+        _modelRuntime.VisionModeEnabled = enabled;
+        _runtimeLog.Info(enabled
+            ? "Vision screenshots enabled. Reloading LLM is required before screenshots are sent."
+            : "Vision screenshots disabled. Reloading LLM is required to unload the projector.");
+
+        if (!_modelRuntime.IsLoaded && !_modelRuntime.IsLoading)
+        {
+            UpdateStatus();
+            return;
+        }
+
+        _runtimeLog.Info("Reloading LLM to apply vision mode change.");
+        await _modelRuntime.UnloadAsync(CancellationToken.None);
+        await ToggleModelLoadAsync();
+    }
+
     private async Task TranscribeAndRunAsync(CancellationToken cancellationToken)
     {
         StopSelectedMicMonitor();
@@ -373,6 +405,8 @@ public sealed class MainWindow : Window
         _talkButton.IsEnabled = !_pauseState.IsPaused;
         _loadModelButton.Content = _modelRuntime.IsLoaded || _modelRuntime.IsLoading ? "Unload LLM" : "Load LLM";
         _loadModelButton.IsEnabled = !_modelRuntime.IsLoading;
+        _visionMode.IsEnabled = !_modelRuntime.IsLoading;
+        _visionMode.IsChecked = _modelRuntime.VisionModeEnabled;
         if (_pauseState.IsPaused)
         {
             _statusText.Text = $"Paused. Ctrl+Alt+Esc and voice stop keep the assistant halted. LLM: {_modelRuntime.StatusMessage}";
