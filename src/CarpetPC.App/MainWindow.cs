@@ -1,20 +1,21 @@
+using CarpetPC.App.Audio;
+using CarpetPC.App.Models;
 using CarpetPC.Core;
 using CarpetPC.Core.Agent;
 using CarpetPC.Core.Audio;
 using CarpetPC.Core.Models;
 using CarpetPC.Core.Safety;
-using System.Text;
 using System.Windows;
 using WpfBrushes = System.Windows.Media.Brushes;
 using WpfColor = System.Windows.Media.Color;
 using WpfDock = System.Windows.Controls.Dock;
 using WpfButton = System.Windows.Controls.Button;
+using WpfCheckBox = System.Windows.Controls.CheckBox;
+using WpfComboBox = System.Windows.Controls.ComboBox;
 using WpfDockPanel = System.Windows.Controls.DockPanel;
 using WpfFontFamily = System.Windows.Media.FontFamily;
-using WpfMessageBox = System.Windows.MessageBox;
-using WpfMessageBoxButton = System.Windows.MessageBoxButton;
-using WpfMessageBoxImage = System.Windows.MessageBoxImage;
 using WpfOrientation = System.Windows.Controls.Orientation;
+using WpfProgressBar = System.Windows.Controls.ProgressBar;
 using WpfScrollBarVisibility = System.Windows.Controls.ScrollBarVisibility;
 using WpfStackPanel = System.Windows.Controls.StackPanel;
 using WpfTextBlock = System.Windows.Controls.TextBlock;
@@ -30,12 +31,17 @@ public sealed class MainWindow : Window
     private readonly PauseState _pauseState;
     private readonly ResourceBudgetService _resourceBudgetService;
     private readonly ModelSetupService _modelSetupService;
+    private readonly MicrophoneMonitor _microphoneMonitor;
     private readonly StubWakeWordService _wakeWordService;
     private readonly ISpeechTranscriber _speechTranscriber;
     private readonly AgentOrchestrator _agentOrchestrator;
     private readonly WpfTextBox _logBox = new();
     private readonly WpfTextBlock _statusText = new();
     private readonly WpfButton _pauseButton = new();
+    private readonly WpfComboBox _micSelector = new();
+    private readonly WpfProgressBar _micLevel = new();
+    private readonly WpfCheckBox _developerMode = new();
+    private readonly WpfButton _simulateWakeButton = new();
     private CancellationTokenSource? _agentRun;
     private bool _allowClose;
 
@@ -44,6 +50,7 @@ public sealed class MainWindow : Window
         PauseState pauseState,
         ResourceBudgetService resourceBudgetService,
         ModelSetupService modelSetupService,
+        MicrophoneMonitor microphoneMonitor,
         StubWakeWordService wakeWordService,
         ISpeechTranscriber speechTranscriber,
         AgentOrchestrator agentOrchestrator)
@@ -52,6 +59,7 @@ public sealed class MainWindow : Window
         _pauseState = pauseState;
         _resourceBudgetService = resourceBudgetService;
         _modelSetupService = modelSetupService;
+        _microphoneMonitor = microphoneMonitor;
         _wakeWordService = wakeWordService;
         _speechTranscriber = speechTranscriber;
         _agentOrchestrator = agentOrchestrator;
@@ -65,9 +73,14 @@ public sealed class MainWindow : Window
         Content = BuildContent();
 
         _runtimeLog.EntryWritten += OnLogEntry;
+        _microphoneMonitor.LevelChanged += OnMicLevelChanged;
         _pauseState.Changed += (_, _) => Dispatcher.Invoke(UpdateStatus);
         _wakeWordService.WakeDetected += OnWakeDetected;
-        Loaded += async (_, _) => await RefreshResourceStatusAsync();
+        Loaded += async (_, _) =>
+        {
+            LoadMicrophones();
+            await RefreshResourceStatusAsync();
+        };
         Closing += (_, e) =>
         {
             if (_allowClose)
@@ -82,6 +95,7 @@ public sealed class MainWindow : Window
 
     public void RequestExit()
     {
+        _microphoneMonitor.Dispose();
         _allowClose = true;
         Close();
     }
@@ -128,13 +142,6 @@ public sealed class MainWindow : Window
             }
         };
 
-        var simulateWakeButton = new WpfButton
-        {
-            Content = "Simulate Hey Carpet",
-            Margin = new Thickness(0, 0, 8, 0)
-        };
-        simulateWakeButton.Click += (_, _) => _wakeWordService.SimulateWake();
-
         var modelsButton = new WpfButton
         {
             Content = "Model Setup",
@@ -149,11 +156,50 @@ public sealed class MainWindow : Window
         resourceButton.Click += async (_, _) => await RefreshResourceStatusAsync();
 
         toolbar.Children.Add(_pauseButton);
-        toolbar.Children.Add(simulateWakeButton);
         toolbar.Children.Add(modelsButton);
         toolbar.Children.Add(resourceButton);
         WpfDockPanel.SetDock(toolbar, WpfDock.Top);
         root.Children.Add(toolbar);
+
+        var micPanel = new WpfStackPanel
+        {
+            Orientation = WpfOrientation.Horizontal,
+            Margin = new Thickness(0, 0, 0, 12)
+        };
+
+        micPanel.Children.Add(new WpfTextBlock
+        {
+            Text = "Mic:",
+            Foreground = WpfBrushes.White,
+            Width = 36,
+            VerticalAlignment = VerticalAlignment.Center
+        });
+
+        _micSelector.Width = 280;
+        _micSelector.Margin = new Thickness(0, 0, 10, 0);
+        _micSelector.SelectionChanged += (_, _) => StartSelectedMic();
+
+        _micLevel.Width = 180;
+        _micLevel.Height = 18;
+        _micLevel.Maximum = 100;
+        _micLevel.Margin = new Thickness(0, 0, 10, 0);
+
+        _developerMode.Content = "Developer mode";
+        _developerMode.Foreground = WpfBrushes.White;
+        _developerMode.Margin = new Thickness(0, 0, 10, 0);
+        _developerMode.Checked += (_, _) => _simulateWakeButton.Visibility = Visibility.Visible;
+        _developerMode.Unchecked += (_, _) => _simulateWakeButton.Visibility = Visibility.Collapsed;
+
+        _simulateWakeButton.Content = "Simulate Hey Carpet";
+        _simulateWakeButton.Visibility = Visibility.Collapsed;
+        _simulateWakeButton.Click += (_, _) => _wakeWordService.SimulateWake();
+
+        micPanel.Children.Add(_micSelector);
+        micPanel.Children.Add(_micLevel);
+        micPanel.Children.Add(_developerMode);
+        micPanel.Children.Add(_simulateWakeButton);
+        WpfDockPanel.SetDock(micPanel, WpfDock.Top);
+        root.Children.Add(micPanel);
 
         _logBox.IsReadOnly = true;
         _logBox.VerticalScrollBarVisibility = WpfScrollBarVisibility.Auto;
@@ -197,20 +243,12 @@ public sealed class MainWindow : Window
 
     private void ShowModelPrompt()
     {
-        var builder = new StringBuilder();
-        builder.AppendLine("CarpetPC will never download models without confirmation.");
-        builder.AppendLine();
-        builder.AppendLine($"Model folder: {_modelSetupService.GetModelDirectory()}");
-        builder.AppendLine();
-
-        foreach (var item in _modelSetupService.GetAvailableModels())
+        var setupWindow = new ModelSetupWindow(_modelSetupService, _runtimeLog)
         {
-            builder.AppendLine($"- {item.DisplayName}");
-            builder.AppendLine($"  Source: {item.SourceUri}");
-            builder.AppendLine($"  Status: {(_modelSetupService.IsModelPresent(item) ? "Present" : "Missing")}");
-        }
-
-        WpfMessageBox.Show(this, builder.ToString(), "Model Setup", WpfMessageBoxButton.OK, WpfMessageBoxImage.Information);
+            Owner = this
+        };
+        setupWindow.ShowDialog();
+        UpdateStatus();
     }
 
     private async Task RefreshResourceStatusAsync()
@@ -237,8 +275,57 @@ public sealed class MainWindow : Window
     private void UpdateStatus()
     {
         _pauseButton.Content = _pauseState.IsPaused ? "Resume" : "Pause";
-        _statusText.Text = _pauseState.IsPaused
-            ? "Paused. Ctrl+Alt+Esc and voice stop keep the assistant halted."
-            : "Listening for Hey Carpet. Models are only downloaded after explicit confirmation.";
+        if (_pauseState.IsPaused)
+        {
+            _statusText.Text = "Paused. Ctrl+Alt+Esc and voice stop keep the assistant halted.";
+            return;
+        }
+
+        _statusText.Text = _modelSetupService.AreRequiredAssetsPresent()
+            ? "Ready. Listening for Hey Carpet."
+            : "Setup required. Open Model Setup and install required assets before CarpetPC can listen normally.";
+    }
+
+    private void LoadMicrophones()
+    {
+        _micSelector.Items.Clear();
+        foreach (var device in _microphoneMonitor.GetDevices())
+        {
+            _micSelector.Items.Add(device);
+        }
+
+        _micSelector.DisplayMemberPath = nameof(MicrophoneDevice.Name);
+
+        if (_micSelector.Items.Count > 0)
+        {
+            _micSelector.SelectedIndex = 0;
+        }
+        else
+        {
+            _runtimeLog.Warn("No microphone input devices were found.");
+        }
+    }
+
+    private void StartSelectedMic()
+    {
+        if (_micSelector.SelectedItem is not MicrophoneDevice device)
+        {
+            return;
+        }
+
+        try
+        {
+            _microphoneMonitor.Start(device.DeviceNumber);
+            _runtimeLog.Info($"Monitoring microphone: {device.Name}.");
+        }
+        catch (Exception ex)
+        {
+            _runtimeLog.Error($"Could not start microphone monitor: {ex.Message}");
+        }
+    }
+
+    private void OnMicLevelChanged(object? sender, float level)
+    {
+        Dispatcher.Invoke(() => _micLevel.Value = Math.Clamp(level * 100, 0, 100));
     }
 }

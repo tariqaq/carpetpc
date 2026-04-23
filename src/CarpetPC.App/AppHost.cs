@@ -1,5 +1,7 @@
 using CarpetPC.App.Automation;
+using CarpetPC.App.Audio;
 using CarpetPC.App.Hotkeys;
+using CarpetPC.App.Observation;
 using CarpetPC.App.Runtime;
 using CarpetPC.App.Tray;
 using CarpetPC.Core;
@@ -32,8 +34,10 @@ public sealed class AppHost : IDisposable
         _paths.EnsureCreated();
         var wakeWord = new StubWakeWordService();
         var transcriber = new StubSpeechTranscriber();
-        var modelRuntime = new StubModelRuntime(_runtimeLog);
-        var screenObserver = new StubScreenObserver();
+        var modelSetup = new ModelSetupService(new ModelCatalog(), _paths);
+        var resourceBudget = new ResourceBudgetService();
+        var modelRuntime = new LlamaCppModelRuntime(modelSetup, resourceBudget, _runtimeLog);
+        var screenObserver = new WindowsScreenObserver();
         var executor = new WindowsAutomationExecutor(_runtimeLog);
         var orchestrator = new AgentOrchestrator(
             modelRuntime,
@@ -46,8 +50,9 @@ public sealed class AppHost : IDisposable
         _mainWindow = new MainWindow(
             _runtimeLog,
             _pauseState,
-            new ResourceBudgetService(),
-            new ModelSetupService(new ModelCatalog(), _paths),
+            resourceBudget,
+            modelSetup,
+            new MicrophoneMonitor(),
             wakeWord,
             transcriber,
             orchestrator);

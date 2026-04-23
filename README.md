@@ -34,3 +34,24 @@ dotnet test
 ```
 
 Models are not committed. The app stores downloaded models under `%LOCALAPPDATA%\CarpetPC\Models` after explicit user confirmation.
+
+## Current App Behavior
+
+- The normal UI no longer exposes a fake wake button. A manual wake trigger exists only behind `Developer mode`.
+- `Model Setup` shows required assets, confirms before downloads, and stores assets under `%LOCALAPPDATA%\CarpetPC`.
+- The mic selector and live volume bar use the selected Windows recording device.
+- The app will show `Setup required` until required model files exist, including the trained `hey-carpet.onnx` wake-word model.
+
+## Wake-Word Training
+
+Run the folder preparation script:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\wake-training\Prepare-WakeTrainingFolders.ps1
+```
+
+Put positive and negative training audio under `%LOCALAPPDATA%\CarpetPC\WakeTraining`. The exported wake model must be placed at:
+
+```text
+%LOCALAPPDATA%\CarpetPC\Models\WakeWordModel\hey-carpet.onnx
+```

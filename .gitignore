@@ -20,6 +20,11 @@ runtime/bin/
 # Logs and sensitive debug captures
 logs/
 debug-dumps/
+training-data/
+wake-training-data/
+checkpoints/
+*.wav
+*.flac
 *.log
 *.dmp
 
