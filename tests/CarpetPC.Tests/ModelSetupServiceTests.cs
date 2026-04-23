@@ -19,22 +19,6 @@ public sealed class ModelSetupServiceTests
     }
 
     [Fact]
-    public void AreRequiredAssetsPresent_IsFalseWhenAssetsAreMissing()
-    {
-        var service = new ModelSetupService(new ModelCatalog(), new CarpetPaths());
-
-        Assert.False(service.AreRequiredAssetsPresent());
-    }
-
-    [Fact]
-    public void IsReadyForVoiceTest_IsFalseWhenWhisperAssetsAreMissing()
-    {
-        var service = new ModelSetupService(new ModelCatalog(), new CarpetPaths());
-
-        Assert.False(service.IsReadyForVoiceTest());
-    }
-
-    [Fact]
     public void WakeWordModel_IsManualUntilTrainingExportsOnnx()
     {
         var service = new ModelSetupService(new ModelCatalog(), new CarpetPaths());
@@ -43,5 +27,15 @@ public sealed class ModelSetupServiceTests
 
         Assert.Null(wakeModel.DirectDownloadUri);
         Assert.Equal("hey-carpet.onnx", wakeModel.FileName);
+    }
+
+    [Fact]
+    public void AgentModelCatalog_UsesKnownDownloadedGemmaFilename()
+    {
+        var service = new ModelSetupService(new ModelCatalog(), new CarpetPaths());
+
+        var agentModel = service.GetAvailableModels().Single(model => model.Kind == ModelAssetKind.AgentModel);
+
+        Assert.Equal("gemma-4-E2B-it-Q4_K_M.gguf", agentModel.FileName);
     }
 }

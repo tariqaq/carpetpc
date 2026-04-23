@@ -13,7 +13,7 @@ public sealed class WhisperSpeechTranscriber(
     MicrophoneSelection microphoneSelection,
     IRuntimeLog runtimeLog) : ISpeechTranscriber
 {
-    private static readonly string[] WhisperExecutableNames = ["whisper-cli.exe", "whisper.exe", "main.exe"];
+    private static readonly string[] WhisperExecutableNames = ["whisper-cli.exe", "main.exe", "whisper.exe"];
 
     public async Task<TranscriptSegment> ListenForCommandAsync(CancellationToken cancellationToken)
     {
@@ -97,6 +97,7 @@ public sealed class WhisperSpeechTranscriber(
         {
             FileName = command.ExecutablePath,
             Arguments = command.Arguments,
+            WorkingDirectory = Path.GetDirectoryName(command.ExecutablePath)!,
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,
@@ -114,7 +115,7 @@ public sealed class WhisperSpeechTranscriber(
 
         if (process.ExitCode != 0)
         {
-            throw new InvalidOperationException($"whisper.cpp failed: {stderr}");
+            throw new InvalidOperationException($"whisper.cpp failed with exit code {process.ExitCode}: {stderr}{stdout}");
         }
 
         return File.Exists(command.OutputTextPath)
@@ -125,10 +126,21 @@ public sealed class WhisperSpeechTranscriber(
     private string? FindWhisperExecutable()
     {
         var runtimeRoot = modelSetupService.GetRuntimeDirectory();
-        return Directory.Exists(runtimeRoot)
-            ? Directory.EnumerateFiles(runtimeRoot, "*.*", SearchOption.AllDirectories)
-                .FirstOrDefault(path => WhisperExecutableNames.Contains(Path.GetFileName(path), StringComparer.OrdinalIgnoreCase))
-            : null;
+        if (!Directory.Exists(runtimeRoot))
+        {
+            return null;
+        }
+
+        foreach (var executableName in WhisperExecutableNames)
+        {
+            var match = Directory.EnumerateFiles(runtimeRoot, executableName, SearchOption.AllDirectories).FirstOrDefault();
+            if (match is not null)
+            {
+                return match;
+            }
+        }
+
+        return null;
     }
 
     private string? FindWhisperModel()

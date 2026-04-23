@@ -127,8 +127,7 @@ public sealed class LlamaCppModelRuntime(
 
     private string? FindAgentModel()
     {
-        var item = modelSetupService.GetAvailableModels().FirstOrDefault(model => model.Kind == ModelAssetKind.AgentModel);
-        return item is not null && modelSetupService.IsModelPresent(item) ? modelSetupService.GetAssetPath(item) : null;
+        return modelSetupService.FindAgentModel();
     }
 
     private async Task WaitForServerAsync(CancellationToken cancellationToken)

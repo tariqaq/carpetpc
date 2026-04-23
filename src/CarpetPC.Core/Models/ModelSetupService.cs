@@ -21,6 +21,11 @@ public sealed class ModelSetupService(ModelCatalog catalog, CarpetPaths paths, H
             return true;
         }
 
+        if (item.Kind == ModelAssetKind.AgentModel && Directory.Exists(Path.Combine(paths.ModelDirectory, item.Kind.ToString())))
+        {
+            return Directory.EnumerateFiles(Path.Combine(paths.ModelDirectory, item.Kind.ToString()), "*.gguf", SearchOption.AllDirectories).Any();
+        }
+
         if (item.Kind != ModelAssetKind.Runtime)
         {
             return false;
@@ -55,6 +60,20 @@ public sealed class ModelSetupService(ModelCatalog catalog, CarpetPaths paths, H
     {
         var root = item.Kind == ModelAssetKind.Runtime ? paths.RuntimeDirectory : paths.ModelDirectory;
         return Path.Combine(root, item.Kind.ToString(), item.FileName);
+    }
+
+    public string? FindAgentModel()
+    {
+        var configured = catalog.Items.FirstOrDefault(item => item.Kind == ModelAssetKind.AgentModel);
+        if (configured is not null && File.Exists(GetAssetPath(configured)))
+        {
+            return GetAssetPath(configured);
+        }
+
+        var agentDirectory = Path.Combine(paths.ModelDirectory, ModelAssetKind.AgentModel.ToString());
+        return Directory.Exists(agentDirectory)
+            ? Directory.EnumerateFiles(agentDirectory, "*.gguf", SearchOption.AllDirectories).FirstOrDefault()
+            : null;
     }
 
     public string? FindRuntimeExecutable(string fileName)

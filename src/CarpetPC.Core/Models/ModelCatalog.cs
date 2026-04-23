@@ -33,7 +33,7 @@ public sealed class ModelCatalog
             "Q4",
             new Uri("https://huggingface.co/dahus/gemma-4-e2b-it-Q4_K_M-GGUF"),
             new Uri("https://huggingface.co/dahus/gemma-4-e2b-it-Q4_K_M-GGUF/resolve/main/gemma-4-e2b-q4km.gguf"),
-            "gemma-4-e2b-q4km.gguf",
+            "gemma-4-E2B-it-Q4_K_M.gguf",
             3_190_000_000L,
             "Default local agent model candidate. Download only after user confirmation.",
             true),
